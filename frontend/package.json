@@ -6,7 +6,7 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test --watch=false"
   },
   "private": true,
   "packageManager": "npm@11.19.0",
@@ -24,8 +24,10 @@
     "@angular/build": "^22.2.2",
     "@angular/cli": "^22.2.2",
     "@angular/compiler-cli": "^22.2.0",
+    "jsdom": "^30.1.2",
     "prettier": "^3.8.1",
-    "typescript": "~6.0.2"
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.11"
   },
   "allowScripts": {
     "esbuild": true,

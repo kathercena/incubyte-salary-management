@@ -1,17 +1,155 @@
-<main class="shell">
-  <header class="topbar">
-    <span class="brand-mark" aria-hidden="true">S</span>
-    <span class="brand-name">Salary Management</span>
-  </header>
+<div class="app-frame">
+  @if (!auth.authenticated()) {
+    <main class="login-page">
+      <div class="login-brand"><span class="brand-mark">S</span><span>Salary Management</span></div>
+      <section class="login-card" aria-labelledby="login-title">
+        <p class="eyebrow">Human resources workspace</p>
+        <h1 id="login-title">Sign in to continue</h1>
+        <p class="muted">Use your HR Manager account to access employee compensation.</p>
+        @if (loginError()) {
+          <div class="alert alert-error" role="alert">{{ loginError() }}</div>
+        }
+        <form [formGroup]="loginForm" (ngSubmit)="submitLogin()">
+          <label for="username">Username</label>
+          <input id="username" formControlName="username" autocomplete="username" autocapitalize="off" required>
+          <label for="password">Password</label>
+          <input id="password" type="password" formControlName="password" autocomplete="current-password" required>
+          <button class="button button-primary button-wide" type="submit" [disabled]="loading()">
+            {{ loading() ? 'Connecting…' : 'Sign in securely' }}
+          </button>
+        </form>
+        <p class="login-note"><span class="lock-icon" aria-hidden="true">◈</span> Credentials are held in memory for this session only.</p>
+      </section>
+      <p class="login-footer">Incubyte · People operations</p>
+    </main>
+  } @else {
+    <header class="topbar">
+      <div class="brand-lockup"><span class="brand-mark">S</span><span class="brand-name">Salary Management</span></div>
+      <div class="user-menu"><span class="user-avatar" aria-hidden="true">HR</span><span class="user-label">HR Manager</span>
+        <button class="button button-quiet" type="button" (click)="signOut()">Sign out</button>
+      </div>
+    </header>
 
-  <section class="welcome" aria-labelledby="welcome-title">
-    <p class="eyebrow">HR workspace</p>
-    <h1 id="welcome-title">Employee compensation, clearly managed.</h1>
-    <p class="intro">
-      The application foundation is ready. Employee directory and salary tools
-      will be added in the next delivery milestone.
-    </p>
-  </section>
+    <div class="workspace">
+      <aside class="sidebar" aria-label="Main navigation">
+        <p class="sidebar-label">Workspace</p>
+        <div class="nav-item nav-item-active"><span class="nav-icon" aria-hidden="true">▤</span> Employee directory</div>
+        <div class="sidebar-foot"><span class="status-dot"></span> Secure HR workspace</div>
+      </aside>
 
-  <router-outlet />
-</main>
+      <main class="main-content">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">People operations <span class="crumb-separator">/</span> Directory</p>
+            <h1>Employee directory</h1>
+            <p class="muted">Find people and manage their current compensation.</p>
+          </div>
+          <div class="directory-total"><span class="total-icon" aria-hidden="true">♙</span><span>{{ totalElements().toLocaleString() }}</span><small>employees</small></div>
+        </div>
+
+        <form class="filter-card" [formGroup]="filtersForm" (ngSubmit)="search()">
+          <div class="filter-heading"><div><h2>Find an employee</h2><p>Search or combine filters to narrow the directory.</p></div>
+            <button class="button button-quiet clear-button" type="reset" (click)="filtersForm.reset({name: '', employeeNumber: '', countryCode: '', department: ''}); search()">Clear filters</button>
+          </div>
+          <div class="filter-grid">
+            <label class="filter-field search-field"><span>Name</span><span class="input-with-icon"><span aria-hidden="true">⌕</span><input formControlName="name" placeholder="Search by name" autocomplete="off"></span></label>
+            <label class="filter-field"><span>Employee number</span><input formControlName="employeeNumber" placeholder="e.g. SYN-00042" autocomplete="off"></label>
+            <label class="filter-field"><span>Country</span><select formControlName="countryCode"><option value="">All countries</option>@for (country of countries; track country[0]) {<option [value]="country[0]">{{ country[1] }} ({{ country[0] }})</option>}</select></label>
+            <label class="filter-field"><span>Department</span><input formControlName="department" placeholder="Any department" autocomplete="off"></label>
+            <button class="button button-primary search-button" type="submit" [disabled]="loading()"><span aria-hidden="true">⌕</span> Search</button>
+          </div>
+        </form>
+
+        @if (directoryError()) { <div class="alert alert-error" role="alert">{{ directoryError() }}</div> }
+
+        <section class="directory-card" aria-label="Employee results">
+          <div class="results-toolbar"><div><h2>All employees</h2><p>{{ resultRange() }}</p></div>
+            <span class="page-size-note">{{ pageSize }} per page · sorted by {{ sortBy() }}</span>
+          </div>
+          @if (loading()) {
+            <div class="state-panel" role="status"><span class="spinner"></span><span>Loading employees…</span></div>
+          } @else if (loaded() && employees().length === 0 && !directoryError()) {
+            <div class="state-panel empty-state"><span class="empty-icon" aria-hidden="true">⌕</span><h3>No employees found</h3><p>Try a different name or remove one of the filters.</p><button class="button button-secondary" type="button" (click)="filtersForm.reset({name: '', employeeNumber: '', countryCode: '', department: ''}); search()">Reset search</button></div>
+          } @else if (loaded() && employees().length > 0) {
+            <div class="table-scroll">
+              <table>
+                <thead><tr>
+                  <th scope="col" [attr.aria-sort]="ariaSort('lastName')"><button class="sort-button" type="button" (click)="toggleSort('lastName')">Employee <span>{{ sortIndicator('lastName') }}</span></button></th>
+                  <th scope="col" [attr.aria-sort]="ariaSort('employeeNumber')"><button class="sort-button" type="button" (click)="toggleSort('employeeNumber')">Employee no. <span>{{ sortIndicator('employeeNumber') }}</span></button></th>
+                  <th scope="col" [attr.aria-sort]="ariaSort('department')"><button class="sort-button" type="button" (click)="toggleSort('department')">Department <span>{{ sortIndicator('department') }}</span></button></th>
+                  <th scope="col" [attr.aria-sort]="ariaSort('countryCode')"><button class="sort-button" type="button" (click)="toggleSort('countryCode')">Location <span>{{ sortIndicator('countryCode') }}</span></button></th>
+                  <th scope="col">Current compensation</th>
+                  <th scope="col"><span class="visually-hidden">View details</span></th>
+                </tr></thead>
+                <tbody>
+                  @for (employee of employees(); track employee.id) {
+                    <tr>
+                      <td><button class="employee-link" type="button" (click)="openEmployee(employee)"><span class="employee-avatar">{{ employee.firstName.charAt(0) }}{{ employee.lastName.charAt(0) }}</span><span class="employee-name"><strong>{{ employee.firstName }} {{ employee.lastName }}</strong><small>{{ employee.email }}</small></span></button></td>
+                      <td><span class="employee-number">{{ employee.employeeNumber }}</span></td>
+                      <td>{{ employee.department }}</td>
+                      <td><span class="location-code">{{ employee.countryCode }}</span></td>
+                      <td><span class="salary-amount">{{ formatAmount(employee.amount, employee.currencyCode) }}</span><small class="salary-period">{{ periodLabel(employee.salaryPeriod) }}</small></td>
+                      <td><button class="icon-button" type="button" [attr.aria-label]="'View ' + employee.firstName + ' ' + employee.lastName" (click)="openEmployee(employee)">→</button></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <div class="pagination">
+              <span>{{ resultRange() }}</span>
+              <div class="pagination-actions"><button class="button button-secondary" type="button" (click)="goToPage(page() - 1)" [disabled]="page() === 0 || loading()">← Previous</button>
+                <span class="page-indicator">Page {{ page() + 1 }} of {{ totalPages() }}</span>
+                <button class="button button-secondary" type="button" (click)="goToPage(page() + 1)" [disabled]="page() + 1 >= totalPages() || loading()">Next →</button></div>
+            </div>
+          } @else {
+            <div class="state-panel">Enter filters and search to view employees.</div>
+          }
+        </section>
+        <footer class="page-footer">Compensation values are shown with their currency and pay period. No cross-currency totals are calculated.</footer>
+      </main>
+    </div>
+
+    @if (selectedEmployee(); as employee) {
+      <div class="drawer-backdrop" (click)="closeEmployee()" (keydown.escape)="closeEmployee()">
+        <aside class="detail-drawer" role="dialog" aria-modal="true" [attr.aria-label]="'Employee details for ' + employee.firstName + ' ' + employee.lastName" (click)="$event.stopPropagation()">
+          <header class="drawer-header"><div><p class="eyebrow">Employee profile</p><h2>Employee details</h2></div><button class="icon-button close-button" type="button" aria-label="Close details" (click)="closeEmployee()">×</button></header>
+          @if (detailLoading()) { <div class="state-panel drawer-state" role="status"><span class="spinner"></span><span>Loading employee details…</span></div> }
+          @if (detailError()) { <div class="alert alert-error" role="alert">{{ detailError() }}</div> }
+          @if (!detailLoading() && compensation(); as current) {
+            <div class="profile-summary"><span class="profile-avatar">{{ employee.firstName.charAt(0) }}{{ employee.lastName.charAt(0) }}</span><div><h3>{{ employee.firstName }} {{ employee.lastName }}</h3><p>{{ employee.jobTitle }} · {{ employee.department }}</p><span class="employee-number">{{ employee.employeeNumber }}</span></div></div>
+            <dl class="detail-grid"><div><dt>Email</dt><dd>{{ employee.email }}</dd></div><div><dt>Country</dt><dd>{{ employee.countryCode }}</dd></div><div><dt>Record version</dt><dd>v{{ current.version }}</dd></div></dl>
+
+            <section class="compensation-panel" aria-labelledby="compensation-heading"><div class="section-heading"><div><p class="eyebrow">Current pay</p><h3 id="compensation-heading">Compensation</h3></div>
+              @if (!editingCompensation()) { <button class="button button-secondary" type="button" (click)="startCompensationEdit()">Edit compensation</button> }
+            </div>
+            @if (compensationSaved()) { <div class="alert alert-success" role="status">Compensation updated and reloaded.</div> }
+            @if (compensationError()) { <div class="alert alert-error" role="alert">{{ compensationError() }}</div> }
+            @if (editingCompensation()) {
+              <form class="compensation-form" [formGroup]="compensationForm" (ngSubmit)="saveCompensation()">
+                <label for="amount">Amount</label><input id="amount" formControlName="amount" inputmode="decimal" autocomplete="off" placeholder="e.g. 75000.0000" [attr.aria-invalid]="!!fieldError('amount')">
+                @if (fieldError('amount'); as error) { <span class="field-error">{{ error }}</span> }
+                <div class="form-row"><div><label for="currency">Currency code</label><input id="currency" formControlName="currencyCode" maxlength="3" autocapitalize="characters" placeholder="USD" [attr.aria-invalid]="!!fieldError('currencyCode')">@if (fieldError('currencyCode'); as error) { <span class="field-error">{{ error }}</span> }</div>
+                  <div><label for="period">Pay period</label><select id="period" formControlName="salaryPeriod">@for (period of periods; track period) { <option [value]="period">{{ periodLabel(period) }}</option> }</select></div></div>
+                <p class="version-note">Saving against version v{{ current.version }}. If another user changes this record, you must refresh before retrying.</p>
+                @if (staleCompensation()) { <button class="button button-secondary button-wide" type="button" (click)="refreshCompensation()">Refresh current compensation</button> }
+                <div class="form-actions"><button class="button button-secondary" type="button" (click)="cancelCompensationEdit()">Cancel</button>
+                  <button class="button button-primary" type="submit" [disabled]="savingCompensation() || staleCompensation()">{{ savingCompensation() ? 'Saving…' : 'Save compensation' }}</button></div>
+              </form>
+            } @else {
+              <div class="compensation-value"><strong>{{ formatAmount(current.amount, current.currencyCode) }}</strong><span>{{ periodLabel(current.salaryPeriod) }}</span></div>
+              <p class="version-note">Version v{{ current.version }}</p>
+            }
+            </section>
+
+            <section class="history-section" aria-labelledby="history-heading"><div class="section-heading"><div><p class="eyebrow">Audit trail</p><h3 id="history-heading">Compensation history</h3></div><span class="history-count">{{ history().length }}</span></div>
+              @if (history().length === 0) { <p class="history-empty">No compensation changes recorded yet.</p> }
+              @for (change of history(); track change.id) {
+                <article class="history-entry"><div class="history-line"><span>{{ formatAmount(change.previousAmount, change.previousCurrencyCode) }} {{ periodLabel(change.previousSalaryPeriod) }}</span><span aria-hidden="true">→</span><strong>{{ formatAmount(change.newAmount, change.newCurrencyCode) }} {{ periodLabel(change.newSalaryPeriod) }}</strong></div><p>Updated by {{ change.changedBy }} · {{ change.changedAt | date:'medium' }}</p></article>
+              }
+            </section>
+          }
+        </aside>
+      </div>
+    }
+  }
+</div>

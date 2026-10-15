@@ -84,7 +84,7 @@ class EmployeeApiIntegrationTest {
                 "Analyst", "75000.1250", "USD", "ANNUAL");
         UUID id = UUID.fromString(created.get("id").asText());
         assertThat(created.get("version").asLong()).isZero();
-        assertThat(created.get("amount").decimalValue()).isEqualByComparingTo("75000.1250");
+        assertThat(created.get("amount").asText()).isEqualTo("75000.1250");
 
         mockMvc.perform(get("/api/employees/{id}", id).with(hrAuth()))
                 .andExpect(status().isOk());
@@ -97,7 +97,7 @@ class EmployeeApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(update)))
                 .andExpect(status().isOk()).andReturn();
         JsonNode compensation = objectMapper.readTree(updated.getResponse().getContentAsByteArray());
-        assertThat(compensation.get("amount").decimalValue()).isEqualByComparingTo("81000.5000");
+        assertThat(compensation.get("amount").asText()).isEqualTo("81000.5000");
         assertThat(compensation.get("currencyCode").asText()).isEqualTo("USD");
         assertThat(compensation.get("version").asLong()).isEqualTo(1L);
         assertThat(jdbcTemplate.queryForObject("SELECT base_salary FROM employees WHERE id = ?", BigDecimal.class, id))
@@ -149,10 +149,36 @@ class EmployeeApiIntegrationTest {
                 "Analyst", "100.0000", "GBP", "MONTHLY");
         JsonNode hourly = createEmployee("EMP-HOUR", "hour@example.test", "Hourly", "Amount", "CA", "Finance",
                 "Analyst", "25.0000", "CAD", "HOURLY");
-        assertThat(zero.get("amount").decimalValue()).isEqualByComparingTo("0.0000");
+        assertThat(zero.get("amount").asText()).isEqualTo("0.0000");
         assertThat(monthly.get("salaryPeriod").asText()).isEqualTo("MONTHLY");
         assertThat(hourly.get("salaryPeriod").asText()).isEqualTo("HOURLY");
         assertThat(employeeCount()).isEqualTo(3);
+    }
+
+    @Test
+    void preservesMaximumSupportedMoneyPrecisionAcrossResponsesAndAuditHistory() throws Exception {
+        JsonNode created = createEmployee("EMP-MAX", "maximum@example.test", "Maximum", "Amount", "US", "Finance",
+                "Analyst", "999999999999999.9999", "USD", "ANNUAL");
+        UUID id = UUID.fromString(created.get("id").asText());
+        assertThat(created.get("amount").isTextual()).isTrue();
+        assertThat(created.get("amount").asText()).isEqualTo("999999999999999.9999");
+
+        MvcResult updated = mockMvc.perform(put("/api/employees/{id}/compensation", id).with(hrAuth())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":\"999999999999999.9998\",\"currencyCode\":\"USD\","
+                                + "\"salaryPeriod\":\"ANNUAL\",\"version\":0}"))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode compensation = objectMapper.readTree(updated.getResponse().getContentAsByteArray());
+        assertThat(compensation.get("amount").asText()).isEqualTo("999999999999999.9998");
+
+        MvcResult history = mockMvc.perform(get("/api/employees/{id}/compensation/history", id).with(hrAuth()))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode change = objectMapper.readTree(history.getResponse().getContentAsByteArray())
+                .get("items").get(0);
+        assertThat(change.get("previousAmount").asText()).isEqualTo("999999999999999.9999");
+        assertThat(change.get("newAmount").asText()).isEqualTo("999999999999999.9998");
+        assertThat(jdbcTemplate.queryForObject("SELECT base_salary FROM employees WHERE id = ?", BigDecimal.class, id))
+                .isEqualByComparingTo("999999999999999.9998");
     }
 
     @Test

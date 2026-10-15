@@ -1,10 +1,9 @@
 package com.incubyte.salarymanagement.employee;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
-public record SalaryChangeResponse(UUID id, UUID employeeId, BigDecimal previousAmount,
+public record SalaryChangeResponse(UUID id, UUID employeeId, String previousAmount,
                                    String previousCurrencyCode, SalaryPeriod previousSalaryPeriod,
-                                   BigDecimal newAmount, String newCurrencyCode, SalaryPeriod newSalaryPeriod,
+                                   String newAmount, String newCurrencyCode, SalaryPeriod newSalaryPeriod,
                                    String changedBy, Instant changedAt) { }

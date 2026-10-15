@@ -38,7 +38,9 @@ Prerequisites: Java 17, Maven 3.9+, Node.js 24/npm 11, Angular CLI 22, and Docke
    npm start
    ```
 
-The API listens on `http://localhost:8080`; its health endpoint is `http://localhost:8080/actuator/health`. Angular serves at `http://localhost:4200`. The employee directory UI is added in a later milestone. No Angular feature tests are present yet; frontend tests will be added with the UI features. Never commit `.env` files, local credentials, personal data, or generated build output.
+The API listens on `http://localhost:8080`; its health endpoint is `http://localhost:8080/actuator/health`. Angular serves at `http://localhost:4200` and proxies `/api` to the local API during development. Sign in with the configured HR Manager username and password. The browser keeps the HTTP Basic authorization value in memory for the current page session only; signing out or reloading clears it. Do not use HTTP Basic over an untrusted network; deployed environments must use HTTPS and a same-origin reverse proxy for `/api`.
+
+The directory provides server-side search by name and employee number, country and department filters, allowlisted stable sorting, and pagination. Select an employee to view their profile, current compensation and change history, and edit the amount, currency, or salary period. An optimistic-lock conflict requires refreshing the record before another save. The API base URL defaults to `/api` and can be set at runtime in `frontend/public/app-config.js`; local development uses the Angular proxy. Run frontend tests with `cd frontend; npm test`. Never commit `.env` files, local credentials, personal data, or generated build output.
 
 The employee API uses HTTP Basic authentication and requires the configured HR Manager account. The health endpoint is public; employee and compensation endpoints are protected. HTTP Basic credentials must only be used over HTTPS in a deployed environment.
 
@@ -49,7 +51,7 @@ All `/api/**` routes require the HR Manager's HTTP Basic credentials.
 - `POST /api/employees` — create employee and initial current compensation.
 - `GET /api/employees` — server-paginated directory; filters: `name`, `employeeNumber`, `countryCode`, `department`; default page/size: `0`/`25`, maximum size: `100`; sorting uses an allowlist and stable ID tie-breaker.
 - `GET /api/employees/{id}` and `PUT /api/employees/{id}` — read/update employee profile. Updates require the current `version`.
-- `GET /api/employees/{id}/compensation` and `PUT /api/employees/{id}/compensation` — read/update current amount, ISO currency, and `ANNUAL`, `MONTHLY`, or `HOURLY` period. Updates require the current employee `version` and append an audit entry.
+- `GET /api/employees/{id}/compensation` and `PUT /api/employees/{id}/compensation` — read/update current amount, ISO currency, and `ANNUAL`, `MONTHLY`, or `HOURLY` period. Monetary response fields are decimal strings to preserve all four fractional digits and the supported 15 integer digits through JavaScript clients. Updates accept decimal text, require the current employee `version`, and append an audit entry.
 - `GET /api/employees/{id}/compensation/history` — paginated, read-only compensation change audit.
 
 No employee or audit deletion route is provided. The employee's current compensation remains on the employee row; the audit is append-only. Run backend integration tests with `cd backend; mvn test`; tests use a dedicated PostgreSQL 17 Testcontainers database and never connect to the Compose database.
@@ -93,4 +95,4 @@ The first run reports 10,000 inserted employees; an exact rerun reports that the
 
 ## Current scope
 
-Milestone 1 established application startup and PostgreSQL health. Milestone 2 adds authenticated employee and compensation operations, validation, optimistic concurrency, and append-only compensation audit. The frontend remains a scaffold pending Milestone 3.
+Milestone 1 established application startup and PostgreSQL health. Milestone 2 adds authenticated employee and compensation operations, validation, optimistic concurrency, and append-only compensation audit. Milestone 3A adds the explicit deterministic 10,000-employee seed. Milestone 3B adds the Angular directory and compensation viewing/editing workflow. The UI consumes the existing API; employee create and profile-edit workflows remain API-only.

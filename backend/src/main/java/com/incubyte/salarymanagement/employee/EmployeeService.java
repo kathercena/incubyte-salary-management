@@ -126,18 +126,18 @@ public class EmployeeService {
     private EmployeeResponse response(Employee employee) {
         return new EmployeeResponse(employee.getId(), employee.getEmployeeNumber(), employee.getFirstName(),
                 employee.getLastName(), employee.getEmail(), employee.getCountryCode(), employee.getDepartment(),
-                employee.getJobTitle(), employee.getBaseSalary(), employee.getCurrencyCode(), employee.getSalaryPeriod(),
+                employee.getJobTitle(), employee.getBaseSalary().toPlainString(), employee.getCurrencyCode(), employee.getSalaryPeriod(),
                 employee.getVersion(), employee.getCreatedAt(), employee.getUpdatedAt());
     }
 
     private CompensationResponse compensation(Employee employee) {
-        return new CompensationResponse(employee.getId(), employee.getBaseSalary(), employee.getCurrencyCode(),
+        return new CompensationResponse(employee.getId(), employee.getBaseSalary().toPlainString(), employee.getCurrencyCode(),
                 employee.getSalaryPeriod(), employee.getVersion());
     }
 
     private SalaryChangeResponse response(SalaryChangeAudit audit) {
-        return new SalaryChangeResponse(audit.getId(), audit.getEmployeeId(), audit.getPreviousAmount(),
-                audit.getPreviousCurrencyCode(), audit.getPreviousSalaryPeriod(), audit.getNewAmount(),
+        return new SalaryChangeResponse(audit.getId(), audit.getEmployeeId(), audit.getPreviousAmount().toPlainString(),
+                audit.getPreviousCurrencyCode(), audit.getPreviousSalaryPeriod(), audit.getNewAmount().toPlainString(),
                 audit.getNewCurrencyCode(), audit.getNewSalaryPeriod(), audit.getChangedBy(), audit.getChangedAt());
     }
 

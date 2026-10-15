@@ -1,0 +1,3 @@
+window.salaryManagementConfig = {
+  apiBaseUrl: '/api'
+};
