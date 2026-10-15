@@ -38,7 +38,7 @@ Prerequisites: Java 17, Maven 3.9+, Node.js 24/npm 11, Angular CLI 22, and Docke
    npm start
    ```
 
-The API listens on `http://localhost:8080`; its health endpoint is `http://localhost:8080/actuator/health`. Angular serves at `http://localhost:4200`. The employee directory UI and deterministic seed are added in the next milestone. No Angular feature tests are present yet; frontend tests will be added with the UI features. Never commit `.env` files, local credentials, personal data, or generated build output.
+The API listens on `http://localhost:8080`; its health endpoint is `http://localhost:8080/actuator/health`. Angular serves at `http://localhost:4200`. The employee directory UI is added in a later milestone. No Angular feature tests are present yet; frontend tests will be added with the UI features. Never commit `.env` files, local credentials, personal data, or generated build output.
 
 The employee API uses HTTP Basic authentication and requires the configured HR Manager account. The health endpoint is public; employee and compensation endpoints are protected. HTTP Basic credentials must only be used over HTTPS in a deployed environment.
 
@@ -53,6 +53,35 @@ All `/api/**` routes require the HR Manager's HTTP Basic credentials.
 - `GET /api/employees/{id}/compensation/history` — paginated, read-only compensation change audit.
 
 No employee or audit deletion route is provided. The employee's current compensation remains on the employee row; the audit is append-only. Run backend integration tests with `cd backend; mvn test`; tests use a dedicated PostgreSQL 17 Testcontainers database and never connect to the Compose database.
+
+## Explicit synthetic employee seed
+
+The backend includes a deterministic dataset of exactly 10,000 synthetic employees. It uses reserved `.test` email addresses, stable employee numbers and IDs, fixed timestamps, supported country/currency pairs, and all three salary periods. It creates the current employee compensation only; the append-only salary-change history starts when compensation is subsequently changed through the API. The seed does not run during normal application startup and does not expose an HTTP endpoint. It inserts in one transaction using JDBC batches, refuses partial or conflicting seed identities, and reports an exact complete rerun as a no-op.
+
+Run the seed only against a disposable PostgreSQL database. The following PowerShell setup creates a temporary PostgreSQL 17 container without a volume. Keep it running in one terminal; stopping the container removes its data. This is separate from the persistent Compose database above.
+
+```powershell
+$securePassword = Read-Host 'Disposable seed database password' -AsSecureString
+$credential = [System.Net.NetworkCredential]::new('seed_app', $securePassword)
+$env:POSTGRES_PASSWORD = $credential.Password
+docker run --rm --name incubyte-salary-seed-db -e POSTGRES_DB=salary_seed -e POSTGRES_USER=seed_app -e POSTGRES_PASSWORD -p 127.0.0.1:55432:5432 postgres:17
+```
+
+In another PowerShell terminal, configure the disposable database privately. The one-shot non-web launcher does not start HTTP security or require HR Manager credentials. Build the backend, then run the launcher with its required opt-in flag. Flyway applies the existing migrations to that disposable database before the seed runs.
+
+```powershell
+$securePassword = Read-Host 'Disposable seed database password' -AsSecureString
+$credential = [System.Net.NetworkCredential]::new('seed_app', $securePassword)
+$env:POSTGRES_PASSWORD = $credential.Password
+$env:SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:55432/salary_seed'
+$env:SPRING_DATASOURCE_USERNAME = 'seed_app'
+$env:JAVA_TOOL_OPTIONS = '-Duser.timezone=UTC'
+cd backend
+mvn -B package
+mvn -B spring-boot:run "-Dspring-boot.run.main-class=com.incubyte.salarymanagement.seed.EmployeeSeedApplication" "-Dspring-boot.run.arguments=--app.seed.enabled=true"
+```
+
+The first run reports 10,000 inserted employees; an exact rerun reports that the dataset is already complete without changing rows. Conflicting identifiers or a partial dataset stop without overwriting existing employees. Integration tests use their own isolated Testcontainers PostgreSQL instance, never this disposable database or the Compose volume.
 
 
 ## Project structure
