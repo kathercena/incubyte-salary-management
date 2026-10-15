@@ -139,6 +139,7 @@ export class App {
 
   signOut(): void {
     this.auth.clear();
+    this.loginForm.reset();
     this.employees.set([]);
     this.selectedEmployee.set(null);
     this.compensation.set(null);

@@ -224,10 +224,12 @@ describe('Employee directory and compensation workspace', () => {
   it('clears in-memory credentials when the HR user signs out', () => {
     auth.setCredentials('hr-user', 'local-test-password');
     auth.markAuthenticated();
+    component.loginForm.setValue({ username: 'hr-user', password: 'local-test-password' });
     component.signOut();
 
     expect(auth.authenticated()).toBe(false);
     expect(auth.authorizationHeader()).toBeNull();
+    expect(component.loginForm.getRawValue()).toEqual({ username: '', password: '' });
   });
 
   it('includes backend field validation messages for invalid requests', () => {
