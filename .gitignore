@@ -1,0 +1,30 @@
+# Java / Maven
+target/
+**/target/
+.m2/
+*.class
+
+# Angular / Node
+node_modules/
+.npm-cache/
+dist/
+.angular/
+npm-debug.log*
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+application-local.yml
+application-local.yaml
+
+# IDE and operating system
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Local logs and generated artifacts
+*.log
+coverage/
