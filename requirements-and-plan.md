@@ -1,6 +1,6 @@
 # Incubyte Salary Management — Requirements and Plan
 
-**Assessment:** Incubyte Salary Management. **Environment:** Windows 11, Java 17.0.12, Maven 3.9.16, Node.js 24.20.0, npm 11.19.0, Angular CLI 22.2.2, Git 2.56.0, Docker Desktop, PostgreSQL 17. **Assumptions:** One HR Manager role; gross annual base salary in the employee's stated currency; no payroll processing. Authentication provider and hosting account are not yet selected.
+**Assessment:** Incubyte Salary Management. **Environment:** Windows 11, Java 17.0.12, Maven 3.9.16, Node.js 24.20.0, npm 11.19.0, Angular CLI 22.2.2, Git 2.56.0, Docker Desktop, PostgreSQL 17. **MVP decisions:** one HR Manager role using HTTP Basic credentials from environment variables; one current compensation per employee with an explicit `ANNUAL`, `MONTHLY`, or `HOURLY` period; no payroll processing. Deploy only over HTTPS.
 
 ## Requirements
 
@@ -12,9 +12,9 @@ Out of scope: payroll, tax/net-pay calculations, payslips, payments, FX conversi
 
 ## Architecture and acceptance criteria
 
-Use an explainable modular monolith: Angular SPA → Spring Boot REST API → PostgreSQL, with Flyway migrations, Bean Validation, DTOs, centralized API errors, and explicit security. Keep credentials outside source control. Directory page size defaults to 25 and is capped at 100; sorting is allowlisted and has a unique tie-breaker; filters combine correctly and requests return page metadata. Reject malformed and duplicate identity fields, invalid country/currency codes, negative salary, and excess precision. Store currency and period with every salary. Seed generation is fixed-seed, repeatable, and produces exactly 10,000 synthetic rows. HTTPS and host-managed secrets are required for production.
+Use an explainable modular monolith: Angular SPA → Spring Boot REST API → PostgreSQL, with Flyway migrations, Bean Validation, DTOs, centralized API errors, and Spring Security HTTP Basic for the MVP HR role. Keep credentials outside source control. Directory page size defaults to 25 and is capped at 100; sorting is allowlisted and has a unique tie-breaker; filters combine correctly and requests return page metadata. Reject malformed and duplicate identity fields, invalid country/currency codes, negative salary, and excess precision. Store currency and period with every salary. Seed generation is fixed-seed, repeatable, and produces exactly 10,000 synthetic rows. HTTPS and host-managed secrets are required for production.
 
-Suggested employee fields: UUID, unique employee number, first/last name, email, country code, department, job title, currency code, base salary (`NUMERIC(19,4)`), salary period, version, and timestamps. Index employee number, country, department, and normalized name as query needs become concrete. Keep salary changes auditable when the authentication model is selected; never log salary values.
+The existing V1 employee schema defines UUID, unique employee number and email, first/last name, country code, department, job title, currency code, base salary (`NUMERIC(19,4)`), salary period, optimistic-lock version, and timestamps. It stores one current compensation per employee. Index employee number, country, department, and normalized name as query needs become concrete. Append salary-change audit records attributed to the authenticated HR username; never log salary values.
 
 ## Risks and delivery
 

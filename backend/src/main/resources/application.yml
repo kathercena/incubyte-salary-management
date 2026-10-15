@@ -11,6 +11,11 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+app:
+  security:
+    hr-manager:
+      username: ${HR_MANAGER_USERNAME}
+      password: ${HR_MANAGER_PASSWORD}
 management:
   endpoints:
     web:

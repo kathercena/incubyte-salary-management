@@ -1,6 +1,6 @@
 # Incubyte Salary Management
 
-Salary management application for an HR Manager. The repository is being delivered in five reviewable milestones. This first milestone bootstraps the Java 17 Spring Boot backend, Angular frontend, PostgreSQL local setup, and health check.
+Salary management application for an HR Manager, delivered in five reviewable milestones. Milestone 1 established the Java 17 Spring Boot and Angular applications, PostgreSQL local setup, and health check. Milestone 2 adds the authenticated employee and compensation API.
 
 ## Local development
 
@@ -15,12 +15,16 @@ Prerequisites: Java 17, Maven 3.9+, Node.js 24/npm 11, Angular CLI 22, and Docke
    docker compose up -d postgres
    ```
 
-2. In another PowerShell session, enter the same password privately. Use UTC for the Java process so PostgreSQL receives a timezone name it recognizes on Windows hosts configured with the `Asia/Calcutta` alias. Spring reads the password from `POSTGRES_PASSWORD`.
+2. In another PowerShell session, enter the same database password privately and configure the HR Manager credentials privately. Use UTC for the Java process so PostgreSQL receives a timezone name it recognizes on Windows hosts configured with the `Asia/Calcutta` alias. Spring reads the database password from `POSTGRES_PASSWORD`; the API uses HTTP Basic authentication with `HR_MANAGER_USERNAME` and `HR_MANAGER_PASSWORD`.
 
    ```powershell
    $securePassword = Read-Host 'Local PostgreSQL password' -AsSecureString
    $credential = [System.Net.NetworkCredential]::new('salary_app', $securePassword)
    $env:POSTGRES_PASSWORD = $credential.Password
+   $env:HR_MANAGER_USERNAME = Read-Host 'HR Manager username'
+   $secureHrPassword = Read-Host 'HR Manager password' -AsSecureString
+   $hrCredential = [System.Net.NetworkCredential]::new($env:HR_MANAGER_USERNAME, $secureHrPassword)
+   $env:HR_MANAGER_PASSWORD = $hrCredential.Password
    $env:JAVA_TOOL_OPTIONS = '-Duser.timezone=UTC'
    cd backend
    mvn spring-boot:run
@@ -34,7 +38,21 @@ Prerequisites: Java 17, Maven 3.9+, Node.js 24/npm 11, Angular CLI 22, and Docke
    npm start
    ```
 
-The API listens on `http://localhost:8080`; its health endpoint is `http://localhost:8080/actuator/health`. Angular serves at `http://localhost:4200`. Employee API/UI functionality is added in subsequent milestones. This bootstrap has no Angular test target yet; frontend tests are added with the relevant features. Never commit `.env` files, local credentials, personal data, or generated build output.
+The API listens on `http://localhost:8080`; its health endpoint is `http://localhost:8080/actuator/health`. Angular serves at `http://localhost:4200`. The employee directory UI and deterministic seed are added in the next milestone. No Angular feature tests are present yet; frontend tests will be added with the UI features. Never commit `.env` files, local credentials, personal data, or generated build output.
+
+The employee API uses HTTP Basic authentication and requires the configured HR Manager account. The health endpoint is public; employee and compensation endpoints are protected. HTTP Basic credentials must only be used over HTTPS in a deployed environment.
+
+## Backend API
+
+All `/api/**` routes require the HR Manager's HTTP Basic credentials.
+
+- `POST /api/employees` — create employee and initial current compensation.
+- `GET /api/employees` — server-paginated directory; filters: `name`, `employeeNumber`, `countryCode`, `department`; default page/size: `0`/`25`, maximum size: `100`; sorting uses an allowlist and stable ID tie-breaker.
+- `GET /api/employees/{id}` and `PUT /api/employees/{id}` — read/update employee profile. Updates require the current `version`.
+- `GET /api/employees/{id}/compensation` and `PUT /api/employees/{id}/compensation` — read/update current amount, ISO currency, and `ANNUAL`, `MONTHLY`, or `HOURLY` period. Updates require the current employee `version` and append an audit entry.
+- `GET /api/employees/{id}/compensation/history` — paginated, read-only compensation change audit.
+
+No employee or audit deletion route is provided. The employee's current compensation remains on the employee row; the audit is append-only. Run backend integration tests with `cd backend; mvn test`; tests use a dedicated PostgreSQL 17 Testcontainers database and never connect to the Compose database.
 
 
 ## Project structure
@@ -46,4 +64,4 @@ The API listens on `http://localhost:8080`; its health endpoint is `http://local
 
 ## Current scope
 
-Milestone 1 establishes application startup and PostgreSQL health. It intentionally does not expose employee or salary endpoints before authentication and the employee data model are implemented.
+Milestone 1 established application startup and PostgreSQL health. Milestone 2 adds authenticated employee and compensation operations, validation, optimistic concurrency, and append-only compensation audit. The frontend remains a scaffold pending Milestone 3.
