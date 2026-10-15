@@ -6,6 +6,8 @@ import {
   Compensation,
   CompensationUpdate,
   Employee,
+  EmployeeCreate,
+  EmployeeProfileUpdate,
   EmployeeSearchQuery,
   PageResponse,
   SalaryChange,
@@ -37,8 +39,16 @@ export class EmployeeApiService {
     });
   }
 
+  createEmployee(request: EmployeeCreate): Observable<Employee> {
+    return this.http.post<Employee>(`${this.apiBase}/employees`, request);
+  }
+
   getEmployee(id: string): Observable<Employee> {
     return this.http.get<Employee>(`${this.apiBase}/employees/${encodeURIComponent(id)}`);
+  }
+
+  updateEmployeeProfile(id: string, request: EmployeeProfileUpdate): Observable<Employee> {
+    return this.http.put<Employee>(`${this.apiBase}/employees/${encodeURIComponent(id)}`, request);
   }
 
   getCompensation(id: string): Observable<Compensation> {

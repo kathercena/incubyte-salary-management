@@ -44,8 +44,10 @@
             <h1>Employee directory</h1>
             <p class="muted">Find people and manage their current compensation.</p>
           </div>
+          <button class="button button-primary" type="button" (click)="openCreateEmployee()">＋ Add employee</button>
           <div class="directory-total"><span class="total-icon" aria-hidden="true">♙</span><span>{{ totalElements().toLocaleString() }}</span><small>employees</small></div>
         </div>
+        @if (createSaved()) { <div class="alert alert-success" role="status">Employee created. The directory is filtered to the new employee.</div> }
 
         <form class="filter-card" [formGroup]="filtersForm" (ngSubmit)="search()">
           <div class="filter-heading"><div><h2>Find an employee</h2><p>Search or combine filters to narrow the directory.</p></div>
@@ -117,6 +119,22 @@
           @if (detailError()) { <div class="alert alert-error" role="alert">{{ detailError() }}</div> }
           @if (!detailLoading() && compensation(); as current) {
             <div class="profile-summary"><span class="profile-avatar">{{ employee.firstName.charAt(0) }}{{ employee.lastName.charAt(0) }}</span><div><h3>{{ employee.firstName }} {{ employee.lastName }}</h3><p>{{ employee.jobTitle }} · {{ employee.department }}</p><span class="employee-number">{{ employee.employeeNumber }}</span></div></div>
+            @if (profileSaved()) { <div class="alert alert-success" role="status">Employee profile updated.</div> }
+            @if (profileError()) { <div class="alert alert-error" role="alert">{{ profileError() }}</div> }
+            @if (!editingProfile()) {
+              <button class="button button-secondary" type="button" (click)="startProfileEdit()">Edit profile</button>
+            } @else {
+              <form class="compensation-form profile-form" [formGroup]="profileForm" (ngSubmit)="saveProfile()">
+                <h3>Edit employee profile</h3>
+                <div class="form-row"><div><label for="profile-number">Employee number</label><input id="profile-number" formControlName="employeeNumber" required></div><div><label for="profile-country">Country</label><select id="profile-country" formControlName="countryCode" required><option value="">Choose country</option>@for (country of countries; track country[0]) {<option [value]="country[0]">{{ country[1] }} ({{ country[0] }})</option>}</select></div></div>
+                <div class="form-row"><div><label for="profile-first">First name</label><input id="profile-first" formControlName="firstName" required maxlength="100"></div><div><label for="profile-last">Last name</label><input id="profile-last" formControlName="lastName" required maxlength="100"></div></div>
+                <label for="profile-email">Email</label><input id="profile-email" type="email" formControlName="email" required maxlength="254">
+                <div class="form-row"><div><label for="profile-department">Department</label><input id="profile-department" formControlName="department" required maxlength="100"></div><div><label for="profile-title">Job title</label><input id="profile-title" formControlName="jobTitle" required maxlength="120"></div></div>
+                @if (profileForm.touched && profileForm.invalid) { <ul class="field-error validation-list" role="alert">@for (message of profileFieldErrors(); track message) { <li>{{ message }}</li> }</ul> }
+                <p class="version-note">Profile changes use the current record version. Compensation is not part of this form.</p>
+                <div class="form-actions"><button class="button button-secondary" type="button" (click)="cancelProfileEdit()">Cancel</button><button class="button button-primary" type="submit" [disabled]="savingProfile()">{{ savingProfile() ? 'Saving…' : 'Save profile' }}</button></div>
+              </form>
+            }
             <dl class="detail-grid"><div><dt>Email</dt><dd>{{ employee.email }}</dd></div><div><dt>Country</dt><dd>{{ employee.countryCode }}</dd></div><div><dt>Record version</dt><dd>v{{ current.version }}</dd></div></dl>
 
             <section class="compensation-panel" aria-labelledby="compensation-heading"><div class="section-heading"><div><p class="eyebrow">Current pay</p><h3 id="compensation-heading">Compensation</h3></div>
@@ -149,6 +167,28 @@
             </section>
           }
         </aside>
+      </div>
+    }
+
+    @if (showCreateEmployee()) {
+      <div class="drawer-backdrop" (click)="closeCreateEmployee()" (keydown.escape)="closeCreateEmployee()">
+        <section class="detail-drawer create-drawer" role="dialog" aria-modal="true" aria-labelledby="create-employee-title" (click)="$event.stopPropagation()">
+          <header class="drawer-header"><div><p class="eyebrow">People operations</p><h2 id="create-employee-title">Add employee</h2></div><button class="icon-button close-button" type="button" aria-label="Close add employee form" (click)="closeCreateEmployee()">×</button></header>
+          <p class="muted">Create the profile and initial compensation together.</p>
+          @if (createError()) { <div class="alert alert-error" role="alert">{{ createError() }}</div> }
+          <form class="compensation-form create-form" [formGroup]="createForm" (ngSubmit)="createEmployee()">
+            <div class="form-row"><div><label for="new-number">Employee number</label><input id="new-number" formControlName="employeeNumber" required maxlength="32" placeholder="EMP-10001"></div><div><label for="new-country">Country</label><select id="new-country" formControlName="countryCode" required><option value="">Choose country</option>@for (country of countries; track country[0]) {<option [value]="country[0]">{{ country[1] }} ({{ country[0] }})</option>}</select></div></div>
+            <div class="form-row"><div><label for="new-first">First name</label><input id="new-first" formControlName="firstName" required maxlength="100"></div><div><label for="new-last">Last name</label><input id="new-last" formControlName="lastName" required maxlength="100"></div></div>
+            <label for="new-email">Email</label><input id="new-email" type="email" formControlName="email" required maxlength="254">
+            <div class="form-row"><div><label for="new-department">Department</label><input id="new-department" formControlName="department" required maxlength="100"></div><div><label for="new-title">Job title</label><input id="new-title" formControlName="jobTitle" required maxlength="120"></div></div>
+            <hr><h3>Initial compensation</h3>
+            <label for="new-amount">Amount</label><input id="new-amount" formControlName="amount" inputmode="decimal" autocomplete="off" placeholder="e.g. 75000.0000" required>
+            <div class="form-row"><div><label for="new-currency">Currency code</label><input id="new-currency" formControlName="currencyCode" maxlength="3" placeholder="USD" required></div><div><label for="new-period">Pay period</label><select id="new-period" formControlName="salaryPeriod">@for (period of periods; track period) {<option [value]="period">{{ periodLabel(period) }}</option>}</select></div></div>
+            @if (createForm.touched && createForm.invalid) { <ul class="field-error validation-list" role="alert">@for (message of createFieldErrors(); track message) { <li>{{ message }}</li> }</ul> }
+            <p class="version-note">Amounts remain decimal text so their precision is preserved.</p>
+            <div class="form-actions"><button class="button button-secondary" type="button" (click)="closeCreateEmployee()">Cancel</button><button class="button button-primary" type="submit" [disabled]="creatingEmployee()">{{ creatingEmployee() ? 'Creating…' : 'Create employee' }}</button></div>
+          </form>
+        </section>
       </div>
     }
   }

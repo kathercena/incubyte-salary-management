@@ -9,6 +9,8 @@ import {
   ApiErrorResponse,
   Compensation,
   Employee,
+  EmployeeCreate,
+  EmployeeProfileUpdate,
   EmployeeSearchQuery,
   EmployeeSortField,
   PageResponse,
@@ -29,7 +31,7 @@ const DEFAULT_QUERY: EmployeeSearchQuery = {
   sortDirection: 'asc',
 };
 
-export function apiErrorMessage(error: unknown, context: 'login' | 'directory' | 'detail' | 'save'): string {
+export function apiErrorMessage(error: unknown, context: 'login' | 'directory' | 'detail' | 'save' | 'create' | 'profile'): string {
   const status = error instanceof HttpErrorResponse ? error.status : 0;
   if (status === 400) {
     const body = error instanceof HttpErrorResponse ? error.error as Partial<ApiErrorResponse> : undefined;
@@ -45,12 +47,14 @@ export function apiErrorMessage(error: unknown, context: 'login' | 'directory' |
     return 'This account is not permitted to access the HR Manager workspace.';
   }
   if (status === 404) {
-    return context === 'save'
+    return context === 'save' || context === 'profile'
       ? 'This employee is no longer available. Refresh the directory before continuing.'
       : 'The requested employee could not be found. Refresh the directory and try again.';
   }
   if (status === 409) {
-    return 'This compensation changed after you opened it. Refresh the current record before making another update.';
+    return context === 'save'
+      ? 'This compensation changed after you opened it. Refresh the current record before making another update.'
+      : 'An employee with this employee number or email already exists, or the profile changed. Refresh and review the employee data.';
   }
   return context === 'login'
     ? 'The HR service could not be reached. Check the connection and try again.'
@@ -90,6 +94,8 @@ export class App {
     }),
     salaryPeriod: new FormControl<SalaryPeriod>('ANNUAL', { nonNullable: true, validators: [Validators.required] }),
   });
+  readonly createForm = this.createEmployeeForm();
+  readonly profileForm = this.profileEditorForm();
 
   readonly employees = signal<Employee[]>([]);
   readonly page = signal(0);
@@ -112,6 +118,14 @@ export class App {
   readonly compensationError = signal<string | null>(null);
   readonly compensationSaved = signal(false);
   readonly staleCompensation = signal(false);
+  readonly creatingEmployee = signal(false);
+  readonly createError = signal<string | null>(null);
+  readonly createSaved = signal(false);
+  readonly showCreateEmployee = signal(false);
+  readonly editingProfile = signal(false);
+  readonly savingProfile = signal(false);
+  readonly profileError = signal<string | null>(null);
+  readonly profileSaved = signal(false);
 
   submitLogin(): void {
     this.loginError.set(null);
@@ -182,6 +196,8 @@ export class App {
     this.compensation.set(null);
     this.history.set([]);
     this.editingCompensation.set(false);
+    this.editingProfile.set(false);
+    this.profileSaved.set(false);
     this.compensationError.set(null);
     this.compensationSaved.set(false);
     this.refreshEmployeeDetails(employee.id);
@@ -192,7 +208,101 @@ export class App {
     this.compensation.set(null);
     this.history.set([]);
     this.editingCompensation.set(false);
+    this.editingProfile.set(false);
     this.staleCompensation.set(false);
+  }
+
+  openCreateEmployee(): void {
+    this.createForm.reset({ ...this.emptyEmployeeForm(), salaryPeriod: 'ANNUAL' });
+    this.createError.set(null);
+    this.createSaved.set(false);
+    this.showCreateEmployee.set(true);
+  }
+
+  closeCreateEmployee(): void {
+    if (!this.creatingEmployee()) this.showCreateEmployee.set(false);
+  }
+
+  createEmployee(): void {
+    if (this.creatingEmployee()) return;
+    if (this.createForm.invalid) {
+      this.createForm.markAllAsTouched();
+      return;
+    }
+    const form = this.createForm.getRawValue();
+    const request: EmployeeCreate = {
+      employeeNumber: form.employeeNumber.trim(), firstName: form.firstName.trim(),
+      lastName: form.lastName.trim(), email: form.email.trim(), countryCode: form.countryCode,
+      department: form.department.trim(), jobTitle: form.jobTitle.trim(), amount: form.amount.trim(),
+      currencyCode: form.currencyCode.trim(), salaryPeriod: form.salaryPeriod,
+    };
+    this.creatingEmployee.set(true);
+    this.createError.set(null);
+    this.createSaved.set(false);
+    this.api.createEmployee(request).subscribe({
+      next: (created) => {
+        this.creatingEmployee.set(false);
+        this.showCreateEmployee.set(false);
+        this.createSaved.set(true);
+        this.filtersForm.reset({ name: '', employeeNumber: created.employeeNumber, countryCode: '', department: '' });
+        this.loadDirectory(0);
+        this.openEmployee(created);
+      },
+      error: (error: unknown) => {
+        this.creatingEmployee.set(false);
+        this.createError.set(apiErrorMessage(error, 'create'));
+        this.handleAuthFailure(error);
+      },
+    });
+  }
+
+  startProfileEdit(): void {
+    const employee = this.selectedEmployee();
+    if (!employee) return;
+    this.profileForm.reset({
+      employeeNumber: employee.employeeNumber, firstName: employee.firstName, lastName: employee.lastName,
+      email: employee.email, countryCode: employee.countryCode, department: employee.department,
+      jobTitle: employee.jobTitle,
+    });
+    this.profileError.set(null);
+    this.profileSaved.set(false);
+    this.editingProfile.set(true);
+  }
+
+  cancelProfileEdit(): void {
+    this.editingProfile.set(false);
+    this.profileError.set(null);
+  }
+
+  saveProfile(): void {
+    const employee = this.selectedEmployee();
+    if (!employee || this.profileForm.invalid || this.savingProfile()) {
+      this.profileForm.markAllAsTouched();
+      return;
+    }
+    const form = this.profileForm.getRawValue();
+    const request: EmployeeProfileUpdate = {
+      employeeNumber: form.employeeNumber.trim(), firstName: form.firstName.trim(),
+      lastName: form.lastName.trim(), email: form.email.trim(), countryCode: form.countryCode,
+      department: form.department.trim(), jobTitle: form.jobTitle.trim(), version: employee.version,
+    };
+    this.savingProfile.set(true);
+    this.profileError.set(null);
+    this.profileSaved.set(false);
+    this.api.updateEmployeeProfile(employee.id, request).subscribe({
+      next: () => {
+        this.savingProfile.set(false);
+        this.editingProfile.set(false);
+        this.profileSaved.set(true);
+        this.loadDirectory(this.page());
+        this.refreshEmployeeDetails(employee.id);
+      },
+      error: (error: unknown) => {
+        this.savingProfile.set(false);
+        this.profileError.set(apiErrorMessage(error, 'profile'));
+        this.handleAuthFailure(error);
+      },
+    });
   }
 
   startCompensationEdit(): void {
@@ -301,6 +411,21 @@ export class App {
       : 'Use a three-letter ISO currency code, such as USD.';
   }
 
+  createFieldErrors(): string[] {
+    return this.formErrors(this.createForm, {
+      employeeNumber: 'Employee number', firstName: 'First name', lastName: 'Last name', email: 'Email',
+      countryCode: 'Country', department: 'Department', jobTitle: 'Job title', amount: 'Amount',
+      currencyCode: 'Currency code', salaryPeriod: 'Pay period',
+    });
+  }
+
+  profileFieldErrors(): string[] {
+    return this.formErrors(this.profileForm, {
+      employeeNumber: 'Employee number', firstName: 'First name', lastName: 'Last name', email: 'Email',
+      countryCode: 'Country', department: 'Department', jobTitle: 'Job title',
+    });
+  }
+
   private loadDirectory(page: number): void {
     const filters = this.filtersForm.getRawValue();
     const query: EmployeeSearchQuery = {
@@ -380,5 +505,60 @@ export class App {
 
   private amountInput(amount: string): string {
     return amount;
+  }
+
+  private handleAuthFailure(error: unknown): void {
+    if (error instanceof HttpErrorResponse && error.status === 401) {
+      this.auth.clear();
+      this.loginError.set(apiErrorMessage(error, 'login'));
+    }
+  }
+
+  private emptyEmployeeForm() {
+    return { employeeNumber: '', firstName: '', lastName: '', email: '', countryCode: '', department: '',
+      jobTitle: '', amount: '', currencyCode: '', salaryPeriod: 'ANNUAL' as SalaryPeriod };
+  }
+
+  private createEmployeeForm() {
+    const requiredText = (maxLength: number) => [Validators.required, Validators.maxLength(maxLength)];
+    return new FormGroup({
+      employeeNumber: new FormControl('', { nonNullable: true, validators: [...requiredText(32), Validators.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/)] }),
+      firstName: new FormControl('', { nonNullable: true, validators: requiredText(100) }),
+      lastName: new FormControl('', { nonNullable: true, validators: requiredText(100) }),
+      email: new FormControl('', { nonNullable: true, validators: [...requiredText(254), Validators.email] }),
+      countryCode: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.pattern(/^[A-Z]{2}$/)] }),
+      department: new FormControl('', { nonNullable: true, validators: requiredText(100) }),
+      jobTitle: new FormControl('', { nonNullable: true, validators: requiredText(120) }),
+      amount: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.pattern(/^(?:0|[1-9]\d{0,14})(?:\.\d{1,4})?$/)] }),
+      currencyCode: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.pattern(/^[A-Z]{3}$/)] }),
+      salaryPeriod: new FormControl<SalaryPeriod>('ANNUAL', { nonNullable: true, validators: [Validators.required] }),
+    });
+  }
+
+  private profileEditorForm() {
+    const requiredText = (maxLength: number) => [Validators.required, Validators.maxLength(maxLength)];
+    return new FormGroup({
+      employeeNumber: new FormControl('', { nonNullable: true, validators: [...requiredText(32), Validators.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/)] }),
+      firstName: new FormControl('', { nonNullable: true, validators: requiredText(100) }),
+      lastName: new FormControl('', { nonNullable: true, validators: requiredText(100) }),
+      email: new FormControl('', { nonNullable: true, validators: [...requiredText(254), Validators.email] }),
+      countryCode: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.pattern(/^[A-Z]{2}$/)] }),
+      department: new FormControl('', { nonNullable: true, validators: requiredText(100) }),
+      jobTitle: new FormControl('', { nonNullable: true, validators: requiredText(120) }),
+    });
+  }
+
+  private formErrors(form: FormGroup, labels: Record<string, string>): string[] {
+    return Object.entries(form.controls).flatMap(([name, control]) => {
+      if (!control.invalid) return [];
+      const label = labels[name] ?? name;
+      if (control.hasError('required')) return [`${label} is required.`];
+      if (control.hasError('email')) return [`${label} must be a valid email address.`];
+      if (control.hasError('maxlength')) return [`${label} is too long.`];
+      if (name === 'amount') return ['Amount must be non-negative with up to 15 integer and 4 fractional digits.'];
+      if (name === 'currencyCode') return ['Currency code must be a supported three-letter ISO code.'];
+      if (name === 'countryCode') return ['Choose a supported country.'];
+      return [`${label} has an invalid format.`];
+    });
   }
 }

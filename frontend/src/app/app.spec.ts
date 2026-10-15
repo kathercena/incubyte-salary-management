@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { App, apiErrorMessage } from './app';
 import { AuthService } from './core/auth.service';
 import { EmployeeApiService } from './core/employee-api.service';
@@ -40,20 +40,24 @@ describe('Employee directory and compensation workspace', () => {
   let component: App;
   let api: {
     search: ReturnType<typeof vi.fn>;
+    createEmployee: ReturnType<typeof vi.fn>;
     getEmployee: ReturnType<typeof vi.fn>;
     getCompensation: ReturnType<typeof vi.fn>;
     getHistory: ReturnType<typeof vi.fn>;
     updateCompensation: ReturnType<typeof vi.fn>;
+    updateEmployeeProfile: ReturnType<typeof vi.fn>;
   };
   let auth: AuthService;
 
   beforeEach(async () => {
     api = {
       search: vi.fn().mockReturnValue(of({ items: [], page: 0, size: 25, totalElements: 0, totalPages: 0 })),
+      createEmployee: vi.fn().mockReturnValue(of(EMPLOYEE)),
       getEmployee: vi.fn().mockReturnValue(of(EMPLOYEE)),
       getCompensation: vi.fn().mockReturnValue(of(COMPENSATION)),
       getHistory: vi.fn().mockReturnValue(of(EMPTY_HISTORY)),
       updateCompensation: vi.fn().mockReturnValue(of(COMPENSATION)),
+      updateEmployeeProfile: vi.fn().mockReturnValue(of(EMPLOYEE)),
     };
     await TestBed.configureTestingModule({
       imports: [App],
@@ -238,5 +242,114 @@ describe('Employee directory and compensation workspace', () => {
       error: { message: 'Request validation failed.', fieldErrors: [{ field: 'currencyCode', message: 'Invalid code.' }] },
     });
     expect(apiErrorMessage(error, 'save')).toBe('currencyCode: Invalid code.');
+  });
+
+  it('validates all required employee and initial compensation fields before creating', () => {
+    component.openCreateEmployee();
+    component.createEmployee();
+    expect(api.createEmployee).not.toHaveBeenCalled();
+    expect(component.createForm.invalid).toBe(true);
+    expect(component.createFieldErrors()).toContain('Employee number is required.');
+    expect(component.createFieldErrors()).toContain('Amount is required.');
+    expect(component.showCreateEmployee()).toBe(true);
+  });
+
+  it('creates with exact profile and decimal-string compensation payload, then refreshes and opens the record', () => {
+    const created = { ...EMPLOYEE, employeeNumber: 'EMP-NEW', amount: '999999999999999.9999' };
+    api.createEmployee.mockReturnValue(of(created));
+    component.openCreateEmployee();
+    component.createForm.setValue({ employeeNumber: 'EMP-NEW', firstName: 'Pat', lastName: 'Lee',
+      email: 'pat.lee@example.test', countryCode: 'US', department: 'People', jobTitle: 'Partner',
+      amount: '999999999999999.9999', currencyCode: 'USD', salaryPeriod: 'MONTHLY' });
+    expect(component.createForm.valid).toBe(true);
+    component.createEmployee();
+    expect(api.createEmployee).toHaveBeenCalledWith({ employeeNumber: 'EMP-NEW', firstName: 'Pat', lastName: 'Lee',
+      email: 'pat.lee@example.test', countryCode: 'US', department: 'People', jobTitle: 'Partner',
+      amount: '999999999999999.9999', currencyCode: 'USD', salaryPeriod: 'MONTHLY' });
+    expect(component.showCreateEmployee()).toBe(false);
+    expect(component.createSaved()).toBe(true);
+    expect(component.filtersForm.controls.employeeNumber.value).toBe('EMP-NEW');
+    expect(component.selectedEmployee()?.id).toBe(created.id);
+    expect(api.search).toHaveBeenCalledWith(expect.objectContaining({ page: 0, employeeNumber: 'EMP-NEW' }));
+  });
+
+  it('keeps entered values after create validation, duplicate, network, or authentication failure', () => {
+    component.openCreateEmployee();
+    component.createForm.setValue({ employeeNumber: 'EMP-NEW', firstName: 'Pat', lastName: 'Lee',
+      email: 'pat.lee@example.test', countryCode: 'US', department: 'People', jobTitle: 'Partner',
+      amount: '100.00', currencyCode: 'USD', salaryPeriod: 'ANNUAL' });
+    api.createEmployee.mockReturnValue(throwError(() => new HttpErrorResponse({
+      status: 409, error: { message: 'Duplicate employee.' },
+    })));
+    component.createEmployee();
+    expect(component.createError()).toContain('already exists');
+    expect(component.createForm.controls.employeeNumber.value).toBe('EMP-NEW');
+    expect(component.showCreateEmployee()).toBe(true);
+    expect(apiErrorMessage(new HttpErrorResponse({ status: 403 }), 'create')).toContain('not permitted');
+    expect(apiErrorMessage(new HttpErrorResponse({ status: 0 }), 'create')).toContain('Something went wrong');
+  });
+
+  it('disables repeated employee creation while the request is pending', () => {
+    const pending = new Subject<Employee>();
+    api.createEmployee.mockReturnValue(pending);
+    component.openCreateEmployee();
+    component.createForm.setValue({ employeeNumber: 'EMP-NEW', firstName: 'Pat', lastName: 'Lee',
+      email: 'pat.lee@example.test', countryCode: 'US', department: 'People', jobTitle: 'Partner',
+      amount: '100.00', currencyCode: 'USD', salaryPeriod: 'ANNUAL' });
+    component.createEmployee();
+    expect(component.creatingEmployee()).toBe(true);
+    component.createEmployee();
+    expect(api.createEmployee).toHaveBeenCalledTimes(1);
+    pending.next(EMPLOYEE);
+    pending.complete();
+    expect(component.creatingEmployee()).toBe(false);
+  });
+
+  it('populates profile values and submits only profile fields with current version', () => {
+    component.openEmployee(EMPLOYEE);
+    component.startProfileEdit();
+    expect(component.profileForm.getRawValue()).toEqual({ employeeNumber: EMPLOYEE.employeeNumber,
+      firstName: EMPLOYEE.firstName, lastName: EMPLOYEE.lastName, email: EMPLOYEE.email,
+      countryCode: EMPLOYEE.countryCode, department: EMPLOYEE.department, jobTitle: EMPLOYEE.jobTitle });
+    component.profileForm.patchValue({ department: 'People' });
+    component.saveProfile();
+    expect(api.updateEmployeeProfile).toHaveBeenCalledWith(EMPLOYEE.id, {
+      employeeNumber: EMPLOYEE.employeeNumber, firstName: EMPLOYEE.firstName, lastName: EMPLOYEE.lastName,
+      email: EMPLOYEE.email, countryCode: EMPLOYEE.countryCode, department: 'People',
+      jobTitle: EMPLOYEE.jobTitle, version: EMPLOYEE.version,
+    });
+    expect(api.updateEmployeeProfile.mock.calls[0][1]).not.toHaveProperty('amount');
+    expect(api.updateEmployeeProfile.mock.calls[0][1]).not.toHaveProperty('currencyCode');
+    expect(component.editingProfile()).toBe(false);
+    expect(component.profileSaved()).toBe(true);
+    expect(api.search).toHaveBeenCalledWith(expect.objectContaining({ page: 0 }));
+    expect(api.getEmployee).toHaveBeenCalledWith(EMPLOYEE.id);
+  });
+
+  it('blocks invalid profile edits and preserves profile values after conflict and authentication errors', () => {
+    component.openEmployee(EMPLOYEE);
+    component.startProfileEdit();
+    component.profileForm.controls.email.setValue('not-an-email');
+    component.saveProfile();
+    expect(api.updateEmployeeProfile).not.toHaveBeenCalled();
+    expect(component.profileFieldErrors()).toContain('Email must be a valid email address.');
+    component.profileForm.controls.email.setValue(EMPLOYEE.email);
+    api.updateEmployeeProfile.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 409 })));
+    component.saveProfile();
+    expect(component.profileError()).toContain('already exists');
+    expect(component.profileForm.controls.firstName.value).toBe(EMPLOYEE.firstName);
+    expect(component.editingProfile()).toBe(true);
+    expect(apiErrorMessage(new HttpErrorResponse({ status: 401 }), 'profile')).toContain('session has expired');
+  });
+
+  it('handles profile authentication and duplicate conflicts without losing entered data', () => {
+    component.openEmployee(EMPLOYEE);
+    component.startProfileEdit();
+    component.profileForm.controls.department.setValue('People');
+    api.updateEmployeeProfile.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 401 })));
+    component.saveProfile();
+    expect(component.profileForm.controls.department.value).toBe('People');
+    expect(component.auth.authenticated()).toBe(false);
+    expect(component.profileError()).toContain('session has expired');
   });
 });

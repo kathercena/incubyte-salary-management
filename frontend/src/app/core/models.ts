@@ -17,6 +17,30 @@ export interface Employee {
   updatedAt: string;
 }
 
+export interface EmployeeCreate {
+  employeeNumber: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  countryCode: string;
+  department: string;
+  jobTitle: string;
+  amount: string;
+  currencyCode: string;
+  salaryPeriod: SalaryPeriod;
+}
+
+export interface EmployeeProfileUpdate {
+  employeeNumber: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  countryCode: string;
+  department: string;
+  jobTitle: string;
+  version: number;
+}
+
 export interface Compensation {
   employeeId: string;
   amount: string;

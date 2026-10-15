@@ -180,6 +180,11 @@ tbody tr:hover { background: #fbfdfd; }
 
 .drawer-backdrop { position: fixed; inset: 0; z-index: 10; display: flex; justify-content: flex-end; background: #10253670; }
 .detail-drawer { width: min(535px, 100%); height: 100%; overflow-y: auto; padding: 25px 27px 32px; background: #fff; box-shadow: -12px 0 40px #10253622; }
+.create-drawer { overflow-y: auto; }
+.create-form, .profile-form { margin-top: 1rem; }
+.create-form hr { width: 100%; border: 0; border-top: 1px solid #e3e9ed; margin: .5rem 0; }
+.create-form h3, .profile-form h3 { margin: 0; }
+.create-form input, .create-form select, .profile-form input, .profile-form select { min-width: 0; width: 100%; }
 .drawer-header { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 18px; border-bottom: 1px solid #e9eef2; }
 .drawer-header h2 { margin: 0; color: #1d394f; font-size: 20px; }
 .close-button { font-size: 21px; }
@@ -205,6 +210,7 @@ tbody tr:hover { background: #fbfdfd; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-top: 3px; }
 .form-row > div { display: grid; align-content: start; }
 .field-error { color: #ad3e38; font-size: 9px; }
+.validation-list { display: grid; gap: 3px; padding-left: 18px; margin: 2px 0; }
 .compensation-form [aria-invalid="true"] { border-color: #d66d67; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 .history-section { padding-top: 22px; }
@@ -251,6 +257,7 @@ tbody tr:hover { background: #fbfdfd; }
   .user-label { display: none; }
   .brand-name { font-size: 13px; }
   .detail-drawer { padding: 20px 17px 28px; }
+  .create-drawer { inset: 0; width: 100%; max-width: none; }
   .login-page { padding: 22px 16px; }
   .login-card { padding: 25px 21px; }
 }

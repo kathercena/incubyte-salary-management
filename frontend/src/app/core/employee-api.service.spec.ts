@@ -5,7 +5,7 @@ import { API_BASE_URL } from './api-base-url';
 import { authInterceptor } from './auth.interceptor';
 import { AuthService } from './auth.service';
 import { EmployeeApiService, buildEmployeeSearchParams } from './employee-api.service';
-import { EmployeeSearchQuery, PageResponse, Employee } from './models';
+import { EmployeeSearchQuery, PageResponse, Employee, EmployeeCreate, EmployeeProfileUpdate } from './models';
 
 describe('EmployeeApiService', () => {
   let api: EmployeeApiService;
@@ -105,5 +105,27 @@ describe('EmployeeApiService', () => {
     expect(request.request.headers.has('Authorization')).toBe(false);
     request.flush({});
     expect(responseReceived).toBe(true);
+  });
+
+  it('posts the complete employee profile and initial decimal-string compensation', () => {
+    const payload: EmployeeCreate = { employeeNumber: 'EMP-NEW', firstName: 'Pat', lastName: 'Lee',
+      email: 'pat.lee@example.test', countryCode: 'US', department: 'People', jobTitle: 'Partner',
+      amount: '999999999999999.9999', currencyCode: 'USD', salaryPeriod: 'MONTHLY' };
+    api.createEmployee(payload).subscribe();
+    const request = http.expectOne('/hr-api/employees');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual(payload);
+    request.flush({ id: 'new-id', ...payload, version: 0 });
+  });
+
+  it('updates only profile fields and carries the optimistic version', () => {
+    const payload: EmployeeProfileUpdate = { employeeNumber: 'EMP-NEW', firstName: 'Pat', lastName: 'Lee',
+      email: 'pat.lee@example.test', countryCode: 'US', department: 'People', jobTitle: 'Partner', version: 3 };
+    api.updateEmployeeProfile('employee-1', payload).subscribe();
+    const request = http.expectOne('/hr-api/employees/employee-1');
+    expect(request.request.method).toBe('PUT');
+    expect(request.request.body).toEqual(payload);
+    expect(request.request.body).not.toHaveProperty('amount');
+    request.flush({ id: 'employee-1', ...payload, amount: '1000.0000', currencyCode: 'USD', salaryPeriod: 'ANNUAL' });
   });
 });
