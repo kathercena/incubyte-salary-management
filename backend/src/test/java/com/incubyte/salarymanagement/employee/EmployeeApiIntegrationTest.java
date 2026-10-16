@@ -3,6 +3,7 @@ package com.incubyte.salarymanagement.employee;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -25,6 +26,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -39,7 +41,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 
 @SpringBootTest(properties = {
         "HR_MANAGER_USERNAME=test-hr-manager",
-        "HR_MANAGER_PASSWORD=test-only-password"
+        "HR_MANAGER_PASSWORD=test-only-password",
+        "APP_CORS_ALLOWED_ORIGIN=http://localhost:4200"
 })
 @AutoConfigureMockMvc
 @Testcontainers(disabledWithoutDocker = true)
@@ -76,6 +79,30 @@ class EmployeeApiIntegrationTest {
         assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
         assertThat(jdbcTemplate.queryForObject("SELECT to_regclass('public.salary_change_audit') IS NOT NULL", Boolean.class))
                 .isTrue();
+    }
+
+    @Test
+    void corsAllowsOnlyTheConfiguredFrontendAndPreservesAuthenticatedApiAccess() throws Exception {
+        mockMvc.perform(options("/api/employees")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:4200")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "authorization,content-type"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:4200"));
+
+        mockMvc.perform(options("/api/employees")
+                        .header(HttpHeaders.ORIGIN, "https://untrusted.example")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
+                .andExpect(status().isForbidden())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
+
+        mockMvc.perform(get("/api/employees").with(hrAuth())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:4200"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:4200"));
     }
 
     @Test

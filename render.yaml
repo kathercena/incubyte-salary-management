@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: salary-management-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_DATASOURCE_URL
+        sync: false
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: POSTGRES_PASSWORD
+        sync: false
+      - key: HR_MANAGER_USERNAME
+        sync: false
+      - key: HR_MANAGER_PASSWORD
+        sync: false
+
+  - type: web
+    name: salary-management-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build && node scripts/write-render-config.mjs
+    staticPublishPath: dist/frontend/browser
+    envVars:
+      - key: API_ORIGIN
+        fromService:
+          type: web
+          name: salary-management-api
+          envVarKey: RENDER_EXTERNAL_URL
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /app-config.js
+        name: Cache-Control
+        value: no-cache

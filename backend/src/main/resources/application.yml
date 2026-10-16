@@ -11,7 +11,12 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+server:
+  port: ${PORT:8080}
+  address: 0.0.0.0
 app:
+  cors:
+    allowed-origin: ${APP_CORS_ALLOWED_ORIGIN:}
   security:
     hr-manager:
       username: ${HR_MANAGER_USERNAME}

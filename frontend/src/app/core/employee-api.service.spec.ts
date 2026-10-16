@@ -1,6 +1,8 @@
-import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpClient, HttpRequest, HttpResponse, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { createEnvironmentInjector, EnvironmentInjector, runInInjectionContext } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { of } from 'rxjs';
 import { API_BASE_URL } from './api-base-url';
 import { authInterceptor } from './auth.interceptor';
 import { AuthService } from './auth.service';
@@ -16,7 +18,7 @@ describe('EmployeeApiService', () => {
       providers: [
         EmployeeApiService,
         AuthService,
-        { provide: API_BASE_URL, useValue: '/hr-api/' },
+        { provide: API_BASE_URL, useValue: '/api/' },
         provideHttpClient(withInterceptors([authInterceptor])),
         provideHttpClientTesting(),
       ],
@@ -61,7 +63,7 @@ describe('EmployeeApiService', () => {
 
     let page: PageResponse<Employee> | undefined;
     api.search({ page: 0, size: 25, sortBy: 'lastName', sortDirection: 'asc' }).subscribe((response) => page = response);
-    const request = http.expectOne((candidate) => candidate.url === '/hr-api/employees'
+    const request = http.expectOne((candidate) => candidate.url === '/api/employees'
       && candidate.params.get('page') === '0'
       && candidate.params.get('size') === '25'
       && candidate.params.get('sort') === 'lastName,asc');
@@ -79,7 +81,7 @@ describe('EmployeeApiService', () => {
       version: 4,
     }).subscribe();
 
-    const request = http.expectOne('/hr-api/employees/employee-1/compensation');
+    const request = http.expectOne('/api/employees/employee-1/compensation');
     expect(request.request.headers.get('Authorization')).toBe(auth.authorizationHeader());
     expect(request.request.body).toEqual({
       amount: '75000.1250',
@@ -90,20 +92,26 @@ describe('EmployeeApiService', () => {
     request.flush({ employeeId: 'employee-1', amount: '75000.1250', currencyCode: 'USD', salaryPeriod: 'ANNUAL', version: 5 });
 
     api.getHistory('employee-1').subscribe();
-    const history = http.expectOne('/hr-api/employees/employee-1/compensation/history?page=0&size=10');
+    const history = http.expectOne('/api/employees/employee-1/compensation/history?page=0&size=10');
     expect(history.request.headers.get('Authorization')).toBe(auth.authorizationHeader());
     history.flush({ items: [], page: 0, size: 10, totalElements: 0, totalPages: 0 });
   });
 
-  it('does not send credentials to a URL outside the configured API path', () => {
+  it('does not send credentials outside the configured API path or origin', () => {
     const auth = TestBed.inject(AuthService);
     auth.setCredentials('hr-user', 'local-test-password');
     let responseReceived = false;
-    TestBed.inject(HttpClient).get('/hr-api-elsewhere').subscribe(() => responseReceived = true);
+    TestBed.inject(HttpClient).get('/api-elsewhere').subscribe(() => responseReceived = true);
 
-    const request = http.expectOne('/hr-api-elsewhere');
+    const request = http.expectOne('/api-elsewhere');
     expect(request.request.headers.has('Authorization')).toBe(false);
     request.flush({});
+
+    TestBed.inject(HttpClient).get('https://untrusted.example/api/employees')
+      .subscribe(() => responseReceived = true);
+    const foreignOriginRequest = http.expectOne('https://untrusted.example/api/employees');
+    expect(foreignOriginRequest.request.headers.has('Authorization')).toBe(false);
+    foreignOriginRequest.flush({});
     expect(responseReceived).toBe(true);
   });
 
@@ -112,7 +120,7 @@ describe('EmployeeApiService', () => {
       email: 'pat.lee@example.test', countryCode: 'US', department: 'People', jobTitle: 'Partner',
       amount: '999999999999999.9999', currencyCode: 'USD', salaryPeriod: 'MONTHLY' };
     api.createEmployee(payload).subscribe();
-    const request = http.expectOne('/hr-api/employees');
+    const request = http.expectOne('/api/employees');
     expect(request.request.method).toBe('POST');
     expect(request.request.body).toEqual(payload);
     request.flush({ id: 'new-id', ...payload, version: 0 });
@@ -122,10 +130,31 @@ describe('EmployeeApiService', () => {
     const payload: EmployeeProfileUpdate = { employeeNumber: 'EMP-NEW', firstName: 'Pat', lastName: 'Lee',
       email: 'pat.lee@example.test', countryCode: 'US', department: 'People', jobTitle: 'Partner', version: 3 };
     api.updateEmployeeProfile('employee-1', payload).subscribe();
-    const request = http.expectOne('/hr-api/employees/employee-1');
+    const request = http.expectOne('/api/employees/employee-1');
     expect(request.request.method).toBe('PUT');
     expect(request.request.body).toEqual(payload);
     expect(request.request.body).not.toHaveProperty('amount');
     request.flush({ id: 'employee-1', ...payload, amount: '1000.0000', currencyCode: 'USD', salaryPeriod: 'ANNUAL' });
+  });
+});
+
+describe('authInterceptor API path allowlist', () => {
+  it('does not attach credentials when runtime configuration uses a non-API path', () => {
+    const auth = new AuthService();
+    auth.setCredentials('hr-user', 'local-test-password');
+    const injector = createEnvironmentInjector([
+      { provide: API_BASE_URL, useValue: '/private' },
+      { provide: AuthService, useValue: auth },
+    ], TestBed.inject(EnvironmentInjector));
+    const request = new HttpRequest('GET', '/private/employees');
+    let forwarded: HttpRequest<unknown> | undefined;
+
+    runInInjectionContext(injector, () => authInterceptor(request, (nextRequest) => {
+      forwarded = nextRequest;
+      return of(new HttpResponse());
+    }));
+
+    expect(forwarded?.headers.has('Authorization')).toBe(false);
+    injector.destroy();
   });
 });

@@ -6,10 +6,18 @@ import { AuthService } from './auth.service';
 export const authInterceptor: HttpInterceptorFn = (request, next) => {
   const apiBase = inject(API_BASE_URL);
   const authorization = inject(AuthService).authorizationHeader();
-  const normalizedRequestUrl = request.url.toLowerCase();
-  const normalizedApiBase = apiBase.replace(/\/+$/, '').toLowerCase();
-  const targetsApi = normalizedRequestUrl.startsWith(`${normalizedApiBase}/`)
-    || normalizedRequestUrl === normalizedApiBase;
+  let targetsApi = false;
+  try {
+    const origin = typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
+    const configuredApi = new URL(apiBase, origin);
+    const requestUrl = new URL(request.url, origin);
+    const configuredPath = configuredApi.pathname.replace(/\/+$/, '');
+    targetsApi = configuredPath === '/api'
+      && requestUrl.origin === configuredApi.origin
+      && (requestUrl.pathname === '/api' || requestUrl.pathname.startsWith('/api/'));
+  } catch {
+    targetsApi = false;
+  }
 
   return authorization && targetsApi
     ? next(request.clone({ setHeaders: { Authorization: authorization } }))
