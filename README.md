@@ -2,6 +2,10 @@
 
 Salary management application for an HR Manager, delivered in five reviewable milestones. Milestone 1 established the Java 17 Spring Boot and Angular applications, PostgreSQL local setup, and health check. Milestone 2 adds the authenticated employee and compensation API.
 
+## Demo Video
+
+[Watch the Incubyte Salary Management Demo](https://drive.google.com/file/d/1trRRNApuEq-GXzNXXw8qk-8ODqdsFsFF/view?usp=sharing)
+
 ## Local development
 
 Prerequisites: Java 17, Maven 3.9+, Node.js 24/npm 11, Angular CLI 22, and Docker Desktop with Compose.
@@ -42,7 +46,11 @@ The API listens on `http://localhost:8080`; its health endpoint is `http://local
 
 The directory provides server-side search by name and employee number, country and department filters, allowlisted stable sorting, and pagination. Use **Add employee** to create a profile and initial compensation together. From an employee record, profile fields and compensation have separate edit forms and API operations; profile edits preserve compensation, while salary edits append to audit history. An optimistic-lock conflict requires refreshing the record before another compensation save. Amounts remain decimal strings in the browser to preserve precision. The API base URL defaults to `/api` and can be set at runtime in `frontend/public/app-config.js`; local development uses the Angular proxy. Run frontend checks with `cd frontend; npm run build`, `npx --no-install tsc --noEmit -p tsconfig.app.json`, and `npm test`. Never commit `.env` files, local credentials, personal data, or generated build output.
 
-The employee API uses HTTP Basic authentication and requires the configured HR Manager account. The health endpoint is public; employee and compensation endpoints are protected. HTTP Basic credentials must only be used over HTTPS in a deployed environment. See [demo-runbook.md](docs/demo-runbook.md) for a suggested demonstration flow and [deployment-readiness.md](docs/deployment-readiness.md) for the prepared Render + Neon configuration and required manual Dashboard steps. The configuration is not deployed; use synthetic demo data only. Free hosting limits and the shared Basic-auth MVP are not appropriate for production employee data.
+The employee API uses HTTP Basic authentication and requires the configured HR Manager account. The health endpoint is public; employee and compensation endpoints are protected. HTTP Basic credentials must only be used over HTTPS in a deployed environment. The assessment application is deployed for synthetic demo data: [open the live frontend](https://salary-management-frontend-pnwt.onrender.com) or check [backend health](https://salary-management-api-fqc0.onrender.com/actuator/health). See [demo-runbook.md](docs/demo-runbook.md) for a suggested demonstration flow and [deployment-readiness.md](docs/deployment-readiness.md) for deployment details. Free hosting limits and the shared Basic-auth MVP are not appropriate for production employee data.
+
+## Demo Access
+
+The deployed application requires HR Manager credentials. Self-registration is not available; a demo account is preconfigured in Render. The username and password will be provided separately to the assessment reviewer. Credentials are intentionally excluded from this public repository.
 
 ## Backend API
 

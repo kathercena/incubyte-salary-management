@@ -1,103 +1,79 @@
-# Render + Neon deployment preparation
+# Render + Neon deployment status
 
-This repository contains deployment configuration for an assessment/demo deployment. No cloud resources have been created, and the application has not been deployed. Use synthetic data only. The shared HTTP Basic HR account and free-tier service limits are not suitable for real employee salary data or production HR use.
+The Incubyte Salary Management assessment is deployed for a synthetic-data demo. The deployment uses a Render static site for Angular, a Render Docker web service for Spring Boot, and Neon PostgreSQL. It is an assessment MVP, not a production HR system; do not enter real employee or salary data.
 
-The target is a Render Free Static Site for Angular, a Render Free Docker Web Service for Spring Boot, and a Neon PostgreSQL database. A $0 bill depends on current provider terms and staying within included quotas; it is not guaranteed. Render explicitly describes Free web services as unsuitable for production. A Free Render web service sleeps after 15 minutes without inbound traffic and may take about a minute to wake; Render currently includes 750 free instance hours per workspace/month, and bandwidth/build limits also apply. Neon Free currently includes 100 CU-hours and 1 GB storage per project/month, with compute scaling to zero after inactivity. These limits and terms can change; review current plans and billing before creating resources.
+## Current deployment
 
-## What the Blueprint configures
+| Component | Deployed address | Verified status |
+| --- | --- | --- |
+| Angular frontend | [salary-management-frontend-pnwt.onrender.com](https://salary-management-frontend-pnwt.onrender.com) | Production site is deployed; the live HR workflow was manually exercised. |
+| Spring Boot API | [salary-management-api-fqc0.onrender.com](https://salary-management-api-fqc0.onrender.com) | Deployed; `/actuator/health` returned `UP`. |
+| Neon PostgreSQL | Database `neondb` | Contains 10,000 synthetic employees. Read-only verification found 10,000 distinct IDs, employee numbers, and emails, and compensation data for all 10,000 rows. |
 
-The root [`render.yaml`](../render.yaml) defines two Render services. It does not create a Neon database. Render's supported Blueprint fields cover the Docker web service, static site, service reference, health check, build output, response headers, and prompted environment variables.
+Manual live testing covered HR sign-in, employee directory use, profile editing, compensation editing, and compensation audit history. The UI/API preserve the salary currency and period; amounts are decimal strings in the browser and API response to avoid JavaScript precision loss.
 
-| Service | Root directory / context | Build and runtime | Public configuration |
-| --- | --- | --- | --- |
-| `salary-management-api` | Docker context `./backend`; Dockerfile `./backend/Dockerfile` (paths relative to repository root) | Multi-stage Java 17 image; Maven packages the Spring Boot JAR; runs as UID/GID 10001. The app binds to `0.0.0.0:$PORT` (local default `8080`). | Health check: `/actuator/health`. Render provides the backend `https://…onrender.com` URL. |
-| `salary-management-frontend` | Root `frontend` | `npm ci && npm run build && node scripts/write-render-config.mjs`; publishes `dist/frontend/browser`. | Render supplies the backend origin through `API_ORIGIN`. The script writes `app-config.js` into generated output with `apiBaseUrl: "https://<backend>.onrender.com/api"`. |
+## Verification evidence and limitations
 
-The public Angular config contains only the API base URL. The source-controlled `frontend/public/app-config.js` remains `/api` for local proxy development; the deployment script writes only into the generated build directory. It refuses a missing, non-HTTPS, or non-origin `API_ORIGIN` and does not accept credentials or path/query components.
+- Angular production build passed, TypeScript checking passed, and the frontend suite passed **24 tests**.
+- The latest Maven Surefire reports record **23 tests: 23 passed, 0 failures, 0 errors, 0 skipped** (15 employee API integration tests and 8 seed integration tests). Maven reported `BUILD SUCCESS` after running with Java 17 and `JAVA_TOOL_OPTIONS=-Duser.timezone=UTC` in the PowerShell session.
+- The backend integration tests use Testcontainers with isolated PostgreSQL databases; they do not use the Render/Neon database or the local Compose volume.
+- Neon preflight used pgJDBC with `sslmode=verify-full` and an explicit trusted root certificate. The deployed application connects using TLS configuration from its server-side environment. No database credentials or connection strings containing credentials belong in this repository.
+- The assessment demo video has been recorded and uploaded to Google Drive; its link is included in the README. The link is supplied, but external reviewer access has not been independently tested. AI collaboration artifacts are present in [`ai-collaboration.md`](ai-collaboration.md) and [`ai-prompts.md`](ai-prompts.md).
+- Render Free and Neon Free quotas, sleep behavior, availability, and recovery limits can change. Review current provider terms and verify backup/restore expectations before any real operational use.
 
-The frontend's Basic-auth interceptor attaches credentials only when both the request origin and `/api` path match the configured API base. The backend allows CORS only from the single exact `APP_CORS_ALLOWED_ORIGIN` value and only for `/api/**`; allowed methods are GET, POST, PUT, OPTIONS and allowed headers are Authorization and Content-Type. Preflight is permitted before authentication. CORS is denied when no origin is configured. Do not replace this with `*`.
+## Architecture and deployment configuration
 
-## Neon database setup
+The application is a modular monolith: Angular SPA → Spring Boot REST API → PostgreSQL. Flyway owns schema migrations; the API uses DTOs, Bean Validation, centralized API errors, HTTP Basic authentication for the MVP HR role, optimistic concurrency, and append-only compensation audit history. PostgreSQL stores salary as `NUMERIC`; Java uses `BigDecimal`. Currency and salary period are explicit, and the application does not aggregate unlike currencies or periods.
 
-Create a new, empty Neon PostgreSQL database/project for this demo. Do not use the local Compose database or copy real personnel records. In Neon, select the direct (non-pooler) connection details, then separate the hostname, database name, role, and password. The backend URL uses this format, with no credentials embedded in it:
+The root [`render.yaml`](../render.yaml) defines the deployed Render services:
 
-```text
-jdbc:postgresql://<neon-host>:5432/<database>?sslmode=verify-full&sslrootcert=/etc/ssl/certs/ca-certificates.crt
-```
+| Service | Configuration | Runtime behavior |
+| --- | --- | --- |
+| `salary-management-api` | Docker context `./backend`; Dockerfile `./backend/Dockerfile` | Java 17 multi-stage image, non-root UID/GID 10001, listens on Render's `PORT` (local default 8080), health check `/actuator/health`. |
+| `salary-management-frontend` | Root `frontend`; `npm ci && npm run build && node scripts/write-render-config.mjs`; publishes `dist/frontend/browser` | Receives the backend origin through Render's `RENDER_EXTERNAL_URL` service reference as `API_ORIGIN`; generated runtime config contains only the public API base URL. |
 
-Use `sslmode=verify-full` so pgJDBC validates the trusted certificate chain and the Neon hostname. Neon documents ISRG Root X1 as its public CA and gives `/etc/ssl/certs/ca-certificates.crt` as the Debian/Ubuntu system CA bundle path; the backend runtime image is Ubuntu Jammy based. This review rebuilt the image and confirmed the CA bundle is readable, trusts ISRG Root X1, and the Java truststore contains the ISRG Root X1 trusted entry. The configured JDBC URL explicitly points pgJDBC at the OS bundle. A TLS-verified connection to Neon still needs testing after a disposable Neon database is created, so no successful Neon handshake is claimed. Do not use real employee data. Supply the database role and password separately using `SPRING_DATASOURCE_USERNAME` and `POSTGRES_PASSWORD`. The existing Spring datasource configuration maps these variables and runs Flyway V1/V2 on application startup. Use a fresh empty database so Flyway can establish its schema. No Flyway migration or seed was run against a remote database as part of preparing this repository.
+The source-controlled `frontend/public/app-config.js` remains `/api` for the local proxy. The deployment script writes the generated config into the build output and rejects non-HTTPS, credential-bearing, path, or query values. The frontend Basic-auth interceptor attaches credentials only to the configured API origin and `/api` path.
 
-## Render Dashboard configuration
+The backend CORS policy allows only the exact `APP_CORS_ALLOWED_ORIGIN` configured for the deployed frontend, for `/api/**`; preflight is allowed before authentication. Do not use a wildcard. Render preview URLs have different origins and are denied unless deliberately configured and tested. If a service URL changes, update the Render environment reference/origin as appropriate and redeploy the affected service.
 
-1. After reviewing, committing, and pushing these deployment-preparation changes, create a Blueprint from the repository's `main` branch. The first creation flow prompts for the five `sync: false` backend values. Enter the Neon JDBC URL, Neon role, Neon password, HR Manager username, and HR Manager password through the Dashboard only. Do not place values in the Blueprint, Git, a browser-visible frontend setting, or build arguments. When adding/changing a secret after the initial Blueprint creation, set it in the service's Environment page; Render does not re-prompt for `sync: false` values on later Blueprint syncs.
-2. In the Render backend service's Environment page, set `APP_CORS_ALLOWED_ORIGIN` to the exact frontend origin, for example `https://salary-management-frontend.onrender.com` (origin only; no trailing path or `/`). Obtain the actual value from the deployed static site's URL. Save and redeploy the backend. Until set, browser cross-origin requests are intentionally denied.
-3. Confirm the frontend's build-time `API_ORIGIN` reference resolves to the backend service's `RENDER_EXTERNAL_URL`. If the first static build runs before that reference is available or the backend URL later changes, redeploy the static site so the script can produce the correct public `/api` URL.
-4. Verify the public site is HTTPS, `GET https://<backend-host>/actuator/health` reports `UP`, the browser preflight from the exact frontend origin succeeds, and authenticated API requests work. Confirm no credential is present in Angular assets or the browser network URL.
+## Server-side environment and secrets
 
-Render preview deployments use separate frontend origins and are not allowed by this single-origin CORS configuration. Only enable a preview origin through an explicit backend configuration change and test; do not use a wildcard.
+Configure these values in the Render Dashboard's backend environment. Keep passwords and database URLs containing credentials out of Git, build arguments, frontend configuration, logs, and chat.
 
-### Backend environment variables
-
-| Variable | Value source |
+| Variable | Configuration |
 | --- | --- |
-| `SPRING_DATASOURCE_URL` | Neon host/database JDBC URL above, with `sslmode=verify-full` and the system CA bundle path |
-| `SPRING_DATASOURCE_USERNAME` | Neon database role |
-| `POSTGRES_PASSWORD` | Neon database role password; secret |
-| `HR_MANAGER_USERNAME` | A newly selected demo HR username |
-| `HR_MANAGER_PASSWORD` | A unique strong demo password; secret |
-| `APP_CORS_ALLOWED_ORIGIN` | Exact Render static-site origin; set manually after its URL is known |
-| `PORT` | Supplied by Render; the application defaults to `8080` locally |
+| `SPRING_DATASOURCE_URL` | Neon JDBC URL using `sslmode=verify-full` and the server image's trusted CA bundle; never embed username or password. |
+| `SPRING_DATASOURCE_USERNAME` | Dedicated Neon application role. |
+| `POSTGRES_PASSWORD` | Neon application-role password; secret. |
+| `HR_MANAGER_USERNAME` | Demo HR account name. |
+| `HR_MANAGER_PASSWORD` | Demo HR account password; secret. |
+| `APP_CORS_ALLOWED_ORIGIN` | Exact frontend origin: `https://salary-management-frontend-pnwt.onrender.com` (origin only, no path or trailing slash). |
+| `PORT` | Supplied by Render; defaults to 8080 locally. |
 
-Render terminates HTTPS for its public services. Require HTTPS for the frontend and backend endpoints; Neon connections use TLS. Do not send HTTP Basic credentials over plaintext HTTP. Rotate demo credentials after a demo and use a dedicated database role with only the permissions needed by the application and Flyway.
+Render terminates HTTPS at its public services. Use HTTPS for both public URLs and never send HTTP Basic credentials over plaintext HTTP. The shared Basic-auth account and free-tier deployment are for synthetic assessment data only, not real payroll or employee data.
 
-## Seed the new Neon database explicitly
+## Neon TLS and database operations
 
-Seeding is never part of normal application startup or the Render web service. Only run this after verifying that the target is the newly created, empty Neon demo database. The launcher checks for an explicit `--app.seed.enabled=true` opt-in, runs Flyway, and inserts the deterministic synthetic dataset transactionally. An exact rerun is a no-op; partial/conflicting identities fail without overwriting existing employees.
+The pgJDBC configuration uses `sslmode=verify-full`, which validates both the certificate chain and Neon hostname. The Render image includes the operating-system CA bundle, and the Java truststore contains the ISRG Root X1 root used by Neon. The local Neon preflight also succeeded with pgJDBC, `verify-full`, and an explicit root certificate. Keep TLS verification enabled; do not replace it with `sslmode=require` or disable certificate checking.
 
-From a local PowerShell session at the repository root, first obtain the public ISRG Root X1 certificate from the official [Let's Encrypt certificate page](https://letsencrypt.org/certificates/) and save it outside the repository as `%APPDATA%\postgresql\root.crt`. pgJDBC uses that default root certificate path on Windows when `sslrootcert` is not specified. Then enter the Neon host and database name, and read the role password without echoing it. The host guard prevents this documented command from targeting the local Compose database. Do not paste a password into a command, URL, source file, or log.
+The deployed Neon database is already seeded. Verification reported database `neondb`, Flyway version 2, 10,000 employees, unique IDs/employee numbers/emails, and non-null compensation data for every employee. No additional seed run is needed for the assessment demo.
 
-```powershell
-$originalLocation = Get-Location
-$previousJavaHome = $env:JAVA_HOME
-$previousPath = $env:PATH
-try {
-  $neonHost = Read-Host 'Neon database hostname'
-  if ($neonHost -notmatch '^[A-Za-z0-9.-]+\.neon\.tech$') { throw 'Expected the hostname of the new Neon database.' }
-  $database = Read-Host 'Neon database name'
-  if ($database -notmatch '^[A-Za-z0-9_]+$') { throw 'Use a simple PostgreSQL database name.' }
-  $rootCertificate = Join-Path $env:APPDATA 'postgresql\root.crt'
-  if (-not (Test-Path -LiteralPath $rootCertificate -PathType Leaf)) { throw 'Save the official ISRG Root X1 PEM certificate at %APPDATA%\postgresql\root.crt first.' }
-  $env:SPRING_DATASOURCE_URL = "jdbc:postgresql://${neonHost}:5432/${database}?sslmode=verify-full"
-  $env:SPRING_DATASOURCE_USERNAME = Read-Host 'Neon database role'
-  $securePassword = Read-Host 'Neon database password' -AsSecureString
-  $credential = [System.Net.NetworkCredential]::new($env:SPRING_DATASOURCE_USERNAME, $securePassword)
-  $env:POSTGRES_PASSWORD = $credential.Password
-  $env:JAVA_TOOL_OPTIONS = '-Duser.timezone=UTC'
-  $env:JAVA_HOME = 'C:\Program Files\Java\jdk-17'
-  $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
-  Set-Location (Join-Path $originalLocation 'backend')
-  mvn -B package
-  if ($LASTEXITCODE -ne 0) { throw 'Maven package failed; seed was not started.' }
-  mvn -B spring-boot:run "-Dspring-boot.run.main-class=com.incubyte.salarymanagement.seed.EmployeeSeedApplication" "-Dspring-boot.run.arguments=--app.seed.enabled=true"
-  if ($LASTEXITCODE -ne 0) { throw 'Seed command failed.' }
-} finally {
-  Set-Location $originalLocation
-  $env:JAVA_HOME = $previousJavaHome
-  $env:PATH = $previousPath
-  Remove-Item Env:SPRING_DATASOURCE_URL, Env:SPRING_DATASOURCE_USERNAME, Env:POSTGRES_PASSWORD, Env:JAVA_TOOL_OPTIONS -ErrorAction SilentlyContinue
-  $credential = $null
-  $securePassword = $null
-}
-```
+The repository's deterministic seed launcher is explicit opt-in only and is not invoked during normal application startup or by the Render web service. It inserts 10,000 synthetic employees transactionally, treats an exact complete rerun as a no-op, and rejects partial/conflicting identities without overwriting them. See the README's **Explicit synthetic employee seed** section for the command and safe disposable-database setup. Never run a seed against a non-empty or unintended database. Flyway V1 and V2 are applied by application startup to the configured database; do not reset or truncate a database to resolve a migration issue.
 
-Review the Neon host and database name immediately before running Maven. Do not use the Compose database, a production database, or any database containing real employees. This command is documented only; it was not executed during deployment preparation.
+## Local development and troubleshooting
 
-## Remaining release work
+Follow the README for the local Compose database, environment-variable setup, Angular `/api` proxy, and Maven/Angular commands. The Compose database has a persistent volume and is separate from Testcontainers' disposable PostgreSQL test databases; do not remove that volume as routine troubleshooting.
 
-- Create the Render Blueprint and Neon project in the user's accounts; enter secret values privately in the Dashboard.
-- Set the exact CORS origin, verify the generated frontend config, deployment health, and full browser HR workflow.
-- Decide whether free service sleep/quotas and Neon restore/backup limits are acceptable for the demo; select paid plans and operational backups before any production use.
-- Record deployment evidence and the demo video. No cloud deployment is claimed complete here.
+- If the API is unhealthy, check Render logs and `/actuator/health`, then verify `PORT`, datasource URL, database role, password, and Flyway startup without printing secrets.
+- If browser requests fail, check that `APP_CORS_ALLOWED_ORIGIN` exactly matches the deployed frontend origin and that `API_ORIGIN` resolves to the deployed backend origin. Rebuild/redeploy the static site if its backend reference changed.
+- If pgJDBC reports certificate or hostname verification errors, confirm `sslmode=verify-full`, the Neon hostname, and the configured CA bundle. Do not disable verification to make the connection succeed.
+- On Windows, use `JAVA_TOOL_OPTIONS=-Duser.timezone=UTC` in the PowerShell session running Maven/Spring Boot if PostgreSQL rejects the host timezone name.
+- Run backend integration tests only where Docker/Testcontainers can access the Docker engine. A Maven `BUILD SUCCESS` with tests skipped is not evidence that the integration suite passed; inspect the Surefire test totals.
+
+## Remaining assessment work
+
+- Confirm that intended external reviewers can access the Google Drive demo video; access has not been independently tested.
+- Preserve deployment verification evidence and periodically recheck provider limits and recovery options. No real employee or salary data should be used for this assessment deployment.
 
 ## Provider references
 
