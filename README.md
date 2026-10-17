@@ -50,7 +50,7 @@ The employee API uses HTTP Basic authentication and requires the configured HR M
 
 ## Demo Access
 
-The deployed application requires HR Manager credentials. Self-registration is not available; a demo account is preconfigured in Render. The username and password will be provided separately to the assessment reviewer. Credentials are intentionally excluded from this public repository.
+The assessment demo uses a preconfigured HR Manager account; self-registration is not available. The username and password are included in the assessment submission email. Credentials are intentionally excluded from the public GitHub repository.
 
 ## Backend API
 
